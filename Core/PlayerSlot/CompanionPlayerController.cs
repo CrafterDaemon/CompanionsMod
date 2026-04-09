@@ -105,10 +105,15 @@ public class CompanionPlayerController : ModPlayer
             brain.Think();
             brain.ApplyInputs();
 
+            // Tick combat cooldowns every frame so they don't freeze between fights
+            _combatHandler ??= new CompanionCombatHandler();
+            _combatHandler.Update();
+
             // Handle combat directly since Player.ItemCheck() only runs for Main.myPlayer
             if (brain.Inputs.UseItem && brain.Inputs.AimWorldPosition != Vector2.Zero)
             {
-                _combatHandler ??= new CompanionCombatHandler();
+                // Override mouse/screen so weapon swing animations aim at the target
+                AimSimulator.BeginAimOverride(Player, brain.Inputs.AimWorldPosition);
                 _combatHandler.TryAttack(Player, brain.Inputs.AimWorldPosition);
             }
         }

@@ -17,19 +17,25 @@ public class CompanionCombatHandler
     private int _attackAnimTimer;
 
     /// <summary>
+    /// Tick cooldowns every frame so they don't freeze when the companion stops attacking.
+    /// Call unconditionally from CompanionPlayerController.PreUpdate().
+    /// </summary>
+    public void Update()
+    {
+        if (_attackCooldown > 0)
+            _attackCooldown--;
+        if (_attackAnimTimer > 0)
+            _attackAnimTimer--;
+    }
+
+    /// <summary>
     /// Call each frame from the brain when UseItem is true and AimWorldPosition is set.
     /// Performs the actual attack using the companion Player's equipment and stats.
     /// </summary>
     public void TryAttack(Player companion, Vector2 aimTarget)
     {
         if (_attackCooldown > 0)
-        {
-            _attackCooldown--;
             return;
-        }
-
-        if (_attackAnimTimer > 0)
-            _attackAnimTimer--;
 
         var weapon = companion.inventory[companion.selectedItem];
         if (weapon == null || weapon.IsAir || weapon.damage <= 0)
@@ -38,13 +44,21 @@ public class CompanionCombatHandler
         // Face the target
         companion.direction = aimTarget.X > companion.Center.X ? 1 : -1;
 
-        bool isRanged = weapon.shoot > ProjectileID.None
-            && !weapon.CountsAsClass(DamageClass.Melee);
+        bool isMelee = weapon.CountsAsClass(DamageClass.Melee);
+        bool shootsProjectile = weapon.shoot > ProjectileID.None;
 
-        if (isRanged)
-            PerformRangedAttack(companion, weapon, aimTarget);
-        else
+        if (isMelee)
+        {
             PerformMeleeAttack(companion, weapon, aimTarget);
+
+            // Melee weapons that also fire projectiles (Terra Blade, Starfury, etc.)
+            if (shootsProjectile)
+                PerformRangedAttack(companion, weapon, aimTarget);
+        }
+        else if (shootsProjectile)
+        {
+            PerformRangedAttack(companion, weapon, aimTarget);
+        }
     }
 
     private void PerformMeleeAttack(Player companion, Item weapon, Vector2 aimTarget)
@@ -78,13 +92,19 @@ public class CompanionCombatHandler
         float knockback = companion.GetWeaponKnockback(weapon, weapon.knockBack);
         int hitDir = companion.Center.X < bestTarget.Center.X ? 1 : -1;
 
+        bool crit = Main.rand.Next(100) < companion.GetWeaponCrit(weapon);
+
         bestTarget.StrikeNPC(new NPC.HitInfo
         {
             Damage = damage,
             Knockback = knockback,
             HitDirection = hitDir,
+            Crit = crit,
             DamageType = weapon.DamageType
         });
+
+        // Set NPC immune frames to prevent the same swing from multi-hitting
+        bestTarget.immune[companion.whoAmI] = weapon.useTime > 0 ? weapon.useTime : 10;
 
         SoundEngine.PlaySound(SoundID.Item1, companion.Center);
 
@@ -112,10 +132,13 @@ public class CompanionCombatHandler
             if (ammo.shoot > ProjectileID.None)
                 projType = ammo.shoot;
 
-            // Consume ammo
-            ammo.stack--;
-            if (ammo.stack <= 0)
-                ammo.TurnToAir();
+            // Consume ammo (respecting ammo conservation from accessories/buffs)
+            if (!companion.IsAmmoFreeThisShot(weapon, ammo, projType))
+            {
+                ammo.stack--;
+                if (ammo.stack <= 0)
+                    ammo.TurnToAir();
+            }
         }
 
         int damage = companion.GetWeaponDamage(weapon);
