@@ -1,0 +1,9 @@
+displayName = Companions Mod
+author = CrafterDaemon & The Ragnarok Team
+version = 0.1
+sortAfter = ThoriumMod
+hideCode = false
+hideResources = false
+includeSource = true
+includePDB = true
+buildIgnore = .vs\*, Properties\*, *.csproj, *.user, *.sln, obj\*, bin\*, .git\*, .claude\*

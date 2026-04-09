@@ -1,0 +1,221 @@
+Mods: {
+	CompanionsMod: {
+		Configs: {
+			CompanionConfig: {
+				DisplayName: Companion Settings
+
+				Headers: {
+					CompanionLimits: Companion Limits
+					Scaling: Stat Scaling
+					AIBehavior: AI Behavior
+					CrossMod: Cross-Mod Compatibility
+				}
+
+				MaxActiveCompanions: {
+					Label: Max Active Companions
+					Tooltip: Maximum number of companions active at once (default: 1)
+				}
+
+				CompanionDamageMultiplier: {
+					Label: Damage Multiplier
+					Tooltip: Multiplier applied to all companion damage output
+				}
+
+				CompanionHealthMultiplier: {
+					Label: Health Multiplier
+					Tooltip: Multiplier applied to all companion max health
+				}
+
+				ProgressionScaling: {
+					Label: Progression Scaling
+					Tooltip: Whether companion stats scale with world boss progression
+				}
+
+				RespawnDelayTicks: {
+					Label: Respawn Delay (ticks)
+					Tooltip: How many game ticks before a dead companion respawns (60 ticks = 1 second)
+				}
+
+				TeleportDistance: {
+					Label: Teleport Distance
+					Tooltip: Distance in pixels before companion teleports to player
+				}
+
+				CompanionAutoTarget: {
+					Label: Auto-Target Enemies
+					Tooltip: Whether companions automatically engage nearby enemies
+				}
+
+				ThoriumBuffSupport: {
+					Label: Thorium Buff Support
+					Tooltip: Allow companions to benefit from Thorium bard/healer buffs
+				}
+			}
+
+			CompanionClientConfig: {
+				DisplayName: Companion Display Settings
+
+				ShowCompanionHealthBar: {
+					Label: Show Health Bar
+					Tooltip: Display the companion's health bar on screen
+				}
+
+				ShowCompanionEquipment: {
+					Label: Show Equipment
+					Tooltip: Visually display equipped items on humanoid companions
+				}
+
+				ShowCompanionNameplate: {
+					Label: Show Nameplate
+					Tooltip: Display the companion's name above their head
+				}
+			}
+		}
+
+		Dialogue: {
+			DryadCompanionAvailable: I sense a strong bond forming... perhaps there is one who would fight alongside you.
+			CompanionRecruited: "{0} has joined you as a companion!"
+			CompanionDied: "{0} has fallen in battle. They will return shortly."
+			CompanionRespawned: "{0} has returned!"
+			CompanionDismissed: "{0} has been dismissed."
+		}
+
+		UI: {
+			EquipmentPanel: Companion Equipment
+			RecruitButton: Recruit
+			DismissButton: Dismiss
+			SummonButton: Summon
+			QuestLog: Companion Quests
+			NoCompanions: No companions recruited yet.
+			NotEnoughMaterials: Not enough materials to recruit this companion.
+			QuestIncomplete: Quest requirements not yet met.
+		}
+	}
+}
+
+Configs: {
+	CompanionClientConfig: {
+		DisplayName: Companion Client Config
+
+		ShowCompanionHealthBar: {
+			Label: Show Companion Health Bar
+			Tooltip: ""
+		}
+
+		ShowCompanionEquipment: {
+			Label: Show Companion Equipment
+			Tooltip: ""
+		}
+
+		ShowCompanionNameplate: {
+			Label: Show Companion Nameplate
+			Tooltip: ""
+		}
+
+		Headers: {
+			Visibility: Visibility Header
+			UIPositions: U I Positions Header
+		}
+
+		HealthBarX: {
+			Label: Health Bar X
+			Tooltip: ""
+		}
+
+		HealthBarY: {
+			Label: Health Bar Y
+			Tooltip: ""
+		}
+
+		EquipmentPanelX: {
+			Label: Equipment Panel X
+			Tooltip: ""
+		}
+
+		EquipmentPanelY: {
+			Label: Equipment Panel Y
+			Tooltip: ""
+		}
+
+		OrderPanelX: {
+			Label: Order Panel X
+			Tooltip: ""
+		}
+
+		OrderPanelY: {
+			Label: Order Panel Y
+			Tooltip: ""
+		}
+	}
+
+	CompanionConfig: {
+		DisplayName: Companion Config
+
+		Headers: {
+			CompanionLimits: Companion Limits Header
+			Scaling: Scaling Header
+			AIBehavior: A I Behavior Header
+			CrossMod: Cross Mod Header
+			CompanionSlots: Companion Slots Header
+		}
+
+		MaxActiveCompanions: {
+			Label: Max Active Companions
+			Tooltip: ""
+		}
+
+		CompanionDamageMultiplier: {
+			Label: Companion Damage Multiplier
+			Tooltip: ""
+		}
+
+		CompanionHealthMultiplier: {
+			Label: Companion Health Multiplier
+			Tooltip: ""
+		}
+
+		ProgressionScaling: {
+			Label: Progression Scaling
+			Tooltip: ""
+		}
+
+		RespawnDelayTicks: {
+			Label: Respawn Delay Ticks
+			Tooltip: ""
+		}
+
+		TeleportDistance: {
+			Label: Teleport Distance
+			Tooltip: ""
+		}
+
+		CompanionAutoTarget: {
+			Label: Companion Auto Target
+			Tooltip: ""
+		}
+
+		ThoriumBuffSupport: {
+			Label: Thorium Buff Support
+			Tooltip: ""
+		}
+
+		MaxCompanionSlots: {
+			Label: Max Companion Slots
+			Tooltip: ""
+		}
+	}
+}
+
+Items: {
+	CompanionWhistle: {
+		DisplayName: Companion Whistle
+		Tooltip: ""
+	}
+}
+
+NPCs.GuideCompanion.DisplayName: Guide Companion
+
+Keybinds: {
+	"Open Companion Equipment.DisplayName": Open  Companion  Equipment
+	"Open Companion Orders.DisplayName": Open  Companion  Orders
+}

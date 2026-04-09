@@ -1,0 +1,10 @@
+Recruit town NPCs and boss companions to fight alongside you! Equip humanoid companions with gear, unlock boss companions through quests, and bring the fight to Terraria with a loyal ally at your side.
+
+Features:
+- Recruit town NPCs as combat companions
+- Unlock boss companions through quest chains
+- Equip humanoid companions with weapons, armor, and ammo
+- Per-companion equipment restrictions and themed combat kits
+- Companion stat scaling with world progression
+- Full multiplayer support
+- API for other mods to register custom companions and quests
