@@ -1,3 +1,4 @@
+using CompanionsMod.Core.AI;
 using CompanionsMod.Core.AI.Brain;
 using Microsoft.Xna.Framework;
 using Terraria;
@@ -18,7 +19,21 @@ public class EngageEnemyBehavior : IBehavior
     private const float MeleeRange = 80f;
     private const float RangedPreferredDist = 320f;
     private const float RangedMinDist = 160f;
-    private const float DetectionRange = 800f;
+    private const float DefaultDetectionRange = 800f;
+
+    private readonly float _detectionRange;
+    private readonly TargetPriority _priority;
+    private readonly bool _pursueTargets;
+
+    public EngageEnemyBehavior()
+        : this(DefaultDetectionRange, TargetPriority.Nearest, pursueTargets: true) { }
+
+    public EngageEnemyBehavior(float detectionRange, TargetPriority priority, bool pursueTargets = true)
+    {
+        _detectionRange = detectionRange;
+        _priority = priority;
+        _pursueTargets = pursueTargets;
+    }
 
     public BehaviorStatus Tick(CompanionBrain brain, ref CompanionInputState inputs)
     {
@@ -30,7 +45,7 @@ public class EngageEnemyBehavior : IBehavior
         _retargetCooldown--;
         if (_retargetCooldown <= 0 || _currentTarget == null || !CompanionTargeting.IsValidTarget(_currentTarget))
         {
-            _currentTarget = CompanionTargeting.FindBestTarget(companion.Center, DetectionRange, TargetPriority.Nearest);
+            _currentTarget = CompanionTargeting.FindBestTarget(companion.Center, _detectionRange, _priority);
             _retargetCooldown = 15; // retarget every 15 frames
         }
 
@@ -48,25 +63,28 @@ public class EngageEnemyBehavior : IBehavior
         float preferredDist = isRanged ? RangedPreferredDist : MeleeRange * 0.75f;
 
         // Movement: approach or retreat to preferred distance
-        if (dist > preferredDist + 20f)
+        if (_pursueTargets)
         {
-            // Move toward target
-            if (_currentTarget.Center.X < companion.Center.X)
-                inputs.MoveLeft = true;
-            else
-                inputs.MoveRight = true;
+            if (dist > preferredDist + 20f)
+            {
+                // Move toward target
+                if (_currentTarget.Center.X < companion.Center.X)
+                    inputs.MoveLeft = true;
+                else
+                    inputs.MoveRight = true;
 
-            // Jump if blocked
-            if (ShouldJump(companion))
-                inputs.Jump = true;
-        }
-        else if (isRanged && dist < RangedMinDist)
-        {
-            // Retreat from target (ranged only)
-            if (_currentTarget.Center.X < companion.Center.X)
-                inputs.MoveRight = true;
-            else
-                inputs.MoveLeft = true;
+                // Jump if blocked
+                if (ShouldJump(companion))
+                    inputs.Jump = true;
+            }
+            else if (isRanged && dist < RangedMinDist)
+            {
+                // Retreat from target (ranged only)
+                if (_currentTarget.Center.X < companion.Center.X)
+                    inputs.MoveRight = true;
+                else
+                    inputs.MoveLeft = true;
+            }
         }
 
         // Aim at target

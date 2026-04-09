@@ -75,8 +75,17 @@ public class CompanionSlotManager : ModSystem
 
     public static void ReleaseSlot(int playerIndex)
     {
-        if (_slots.Remove(playerIndex))
+        if (_slots.TryGetValue(playerIndex, out var info))
         {
+            // Null out the brain's references so nothing keeps using the dead Player object
+            if (info.Brain != null)
+            {
+                info.Brain.CompanionPlayer = null;
+                info.Brain.OwnerPlayer = null;
+            }
+
+            _slots.Remove(playerIndex);
+
             if (playerIndex >= 0 && playerIndex < Main.player.Length && Main.player[playerIndex] != null)
             {
                 Main.player[playerIndex].active = false;

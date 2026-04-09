@@ -171,6 +171,10 @@ public class CompanionPlayer : ModPlayer
 
     public void OnCompanionDied()
     {
+        // Guard against double-fire — damage receiver and Kill() hook can both call this.
+        if (ActiveCompanionId == null)
+            return;
+
         var def = CompanionRegistry.GetCompanion(ActiveCompanionId);
         int delay = def?.RespawnDelayTicks ?? ModContent.GetInstance<CompanionConfig>()?.RespawnDelayTicks ?? 600;
 

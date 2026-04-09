@@ -1,56 +1,223 @@
-using CompanionsMod.Core.AI.Brain;
-using CompanionsMod.Core.Equipment;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.DataStructures;
+using Terraria.ID;
 using Terraria.ModLoader;
 using Terraria.ModLoader.IO;
 
 namespace CompanionsMod.Core.PlayerSlot;
 
 /// <summary>
-/// ModPlayer attached to companion player entities. Controls AI input injection,
-/// handles combat (since Player.ItemCheck only runs for Main.myPlayer),
-/// syncs visual equipment, suppresses vanilla save/load, and manages lifecycle.
+/// ModPlayer attached to companion player entities.
 ///
-/// Because vanilla's Player.Update() resets/re-derives many stats for non-local
-/// players between frames, we independently track health and mana and enforce
-/// them at the start of each frame.
+/// AUTHORITY MODEL:
+///   Server/singleplayer runs the AI brain, weapon logic, and damage.
+///   Clients receive synced results and only handle physics and rendering.
+///
+/// WEAPON AIM:
+///   Vanilla's ItemCheck uses Main.mouseX/Y to calculate projectile velocity
+///   and swing direction. We override those globals for the duration of
+///   ItemCheck so weapons fire toward the AI's chosen target, then restore
+///   them immediately after so the real player's cursor is unaffected.
+///
+///   No myPlayer swap is needed here — Player.ItemCheck's early-return gate
+///   is removed by an IL edit in CompanionsMod.Load(), so ItemCheck runs
+///   normally for companion players without any global state manipulation.
 /// </summary>
 public class CompanionPlayerController : ModPlayer
 {
     public bool IsCompanionPlayer => CompanionSlotManager.IsCompanionSlot(Player.whoAmI);
-
     private CompanionSlotInfo SlotInfo => CompanionSlotManager.GetSlotInfo(Player.whoAmI);
 
-    private CompanionCombatHandler _combatHandler;
+    private static bool IsAuthority => Main.netMode != NetmodeID.MultiplayerClient;
 
-    /// <summary>
-    /// Independently tracked health. Vanilla resets statLife on non-local player
-    /// slots between frames, so we save it at end of frame and restore it at start.
-    /// -1 means "not yet initialized" (will be set from statLife on first frame).
-    /// </summary>
-    public int TrackedLife { get; set; } = -1;
-
-    /// <summary>Independently tracked mana, same reason as TrackedLife.</summary>
-    public int TrackedMana { get; set; } = -1;
+    // Aim globals saved before ItemCheck, restored after.
+    private int _savedMouseX;
+    private int _savedMouseY;
+    private Vector2 _savedScreenPos;
+    private bool _savedMouseLeft;
+    private bool _isAimOverridden;
 
     public override void PreUpdate()
     {
         if (!IsCompanionPlayer)
+            return;
+        // Decrement attackCD — vanilla does this in a myPlayer-gated section
+        // of the update loop, so companions never get it decremented otherwise.
+        if (Player.attackCD > 0)
+            Player.attackCD--;
+        var info = SlotInfo;
+        if (info == null)
+            return;
+
+        var owner = Main.player[info.OwnerPlayerIndex];
+        if (owner == null || !owner.active)
+            return;
+
+        // Equipment and team sync run on all instances so the companion
+        // has correct stats and appearance everywhere.
+        var cp = owner.GetModPlayer<CompanionPlayer>();
+        var equipment = cp.GetEquipment(info.CompanionId);
+        EquipmentBridge.SyncEquipmentToPlayer(equipment, Player);
+        Player.team = owner.team;
+
+        // Visual sync runs everywhere for rendering.
+        CompanionVisualSync.SyncVisuals(Player);
+        // Zero all controls so nothing carries over from the previous frame.
+        // The brain sets exactly what it wants below.
+        ZeroControls();
+
+        // Everything below is server/singleplayer only.
+        // Clients still run physics (the player slot stays active) but do not
+        // make AI decisions or issue commands.
+        if (!IsAuthority)
+            return;
+
+        // Run the behavior tree. Think() decides what to do; ApplyInputs()
+        // writes those decisions onto the companion's control booleans.
+        var brain = info.Brain;
+        if (brain != null)
+        {
+            brain.CompanionPlayer = Player;
+            brain.OwnerPlayer = owner;
+            brain.Think();
+            brain.ApplyInputs();
+        }
+
+        // If the companion has wandered or been pushed too far away, snap it back.
+        // The server decides this; the teleport syncs to clients automatically.
+        var config = ModContent.GetInstance<CompanionConfig>();
+        float teleportDist = config?.TeleportDistance ?? 800f;
+        if (Vector2.Distance(Player.Center, owner.Center) > teleportDist)
+        {
+            Player.Teleport(owner.Center + new Vector2(owner.direction == 1 ? -60 : 60, 0));
+            Player.velocity = Vector2.Zero;
+        }
+    }
+
+    public override bool PreItemCheck()
+    {
+        if (!IsCompanionPlayer)
+            return true;
+
+        // Clients skip ItemCheck — the server fires weapons and spawns projectiles,
+        // which sync to clients through normal Terraria netcode.
+        if (!IsAuthority)
+            return false;
+
+        // Override mouse globals so ItemCheck fires projectiles and swings weapons
+        // toward the AI's target rather than the real player's cursor position.
+        var aimPos = SlotInfo?.Brain?.Inputs.AimWorldPosition ?? Vector2.Zero;
+        if (aimPos != Vector2.Zero)
+        {
+            _savedMouseX = Main.mouseX;
+            _savedMouseY = Main.mouseY;
+            _savedScreenPos = Main.screenPosition;
+            _savedMouseLeft = Main.mouseLeft;
+            _isAimOverridden = true;
+
+            // Treat the companion as the camera center, then convert the
+            // world-space target into that screen space.
+            Vector2 screen = Player.Center - new Vector2(
+                Main.screenWidth * 0.5f,
+                Main.screenHeight * 0.5f);
+
+            Main.screenPosition = screen;
+
+            Vector2 screenTarget = aimPos - screen;
+            Main.mouseX = (int)screenTarget.X;
+            Main.mouseY = (int)screenTarget.Y;
+            Main.mouseLeft = Player.controlUseItem;
+        }
+
+        return true;
+    }
+
+    public override void PostItemCheck()
+    {
+        if (!IsCompanionPlayer || !_isAimOverridden)
+            return;
+
+        // Restore immediately — the real player's cursor must be correct before
+        // anything else reads it (rendering, other mod hooks, etc.).
+        Main.mouseX = _savedMouseX;
+        Main.mouseY = _savedMouseY;
+        Main.screenPosition = _savedScreenPos;
+        Main.mouseLeft = _savedMouseLeft;
+        _isAimOverridden = false;
+    }
+
+    public override void PostUpdate()
+    {
+        if (!IsCompanionPlayer)
+            return;
+
+        // Damage is authority-only. One authoritative hit detection source prevents
+        // double-counting and keeps NPC iframes consistent across all instances.
+        if (IsAuthority)
+        {
+            CompanionDamageReceiver.CheckDamage(Player);
+
+            // Vanilla only decrements npc.immune up to Main.maxPlayers,
+            // which never reaches the companion's high slot index.
+            // Decrement manually so the NPC doesn't stay permanently immune.
+            for (int i = 0; i < Main.maxNPCs; i++)
+            {
+                var npc = Main.npc[i];
+                if (npc.active && npc.immune[Player.whoAmI] > 0)
+                    npc.immune[Player.whoAmI]--;
+            }
+            for (int i = 0; i < Player.meleeNPCHitCooldown.Length; i++)
+            {
+                if (Player.meleeNPCHitCooldown[i] > 0)
+                    Player.meleeNPCHitCooldown[i]--;
+            }
+        }
+
+        // Prevent the companion from accidentally opening chests, signs, or NPC dialogs.
+        Player.chest = -1;
+        Player.sign = -1;
+    }
+
+    public override bool PreKill(double damage, int hitDirection, bool pvp,
+        ref bool playSound, ref bool genDust, ref PlayerDeathReason damageSource)
+    {
+        if (!IsCompanionPlayer)
+            return true;
+
+        // Suppress death effects — companions go down silently and respawn later.
+        playSound = false;
+        genDust = false;
+        return true;
+    }
+
+    public override void Kill(double damage, int hitDirection, bool pvp, PlayerDeathReason damageSource)
+    {
+        if (!IsCompanionPlayer || !IsAuthority)
             return;
 
         var info = SlotInfo;
         if (info == null)
             return;
 
-        // Restore tracked health/mana that vanilla may have overwritten
-        if (TrackedLife >= 0)
-            Player.statLife = TrackedLife;
-        if (TrackedMana >= 0)
-            Player.statMana = TrackedMana;
+        // Notify the owner so the slot is released and the respawn timer starts.
+        // OnCompanionDied() is idempotent — safe if called more than once.
+        var owner = Main.player[info.OwnerPlayerIndex];
+        if (owner != null && owner.active)
+            owner.GetModPlayer<CompanionPlayer>().OnCompanionDied();
 
-        // Safety: zero all controls before the brain sets them.
+        // Cancel vanilla's respawn screen — companions don't use it.
+        Player.respawnTimer = 0;
+    }
+
+    // Companion state is persisted through the owner's CompanionPlayer, not here.
+    public override void SaveData(TagCompound tag) { }
+    public override void LoadData(TagCompound tag) { }
+
+    // -------------------------------------------------------------------------
+
+    private void ZeroControls()
+    {
         Player.controlLeft = false;
         Player.controlRight = false;
         Player.controlJump = false;
@@ -75,146 +242,5 @@ public class CompanionPlayerController : ModPlayer
         Player.releaseThrow = true;
         Player.releaseQuickHeal = true;
         Player.releaseQuickMana = true;
-
-        // Sync equipment from the owner's CompanionEquipment each frame
-        var owner = Main.player[info.OwnerPlayerIndex];
-        if (owner != null && owner.active)
-        {
-            var cp = owner.GetModPlayer<CompanionPlayer>();
-            var equipment = cp.GetEquipment(info.CompanionId);
-            EquipmentBridge.SyncEquipmentToPlayer(equipment, Player);
-
-            // Keep team synced with owner
-            Player.team = owner.team;
-        }
-
-        // Sync visual armor slots (Player.UpdateEquips skips non-local players)
-        CompanionVisualSync.SyncVisuals(Player);
-
-        // Re-enforce health after equipment sync (in case anything touched it)
-        if (TrackedLife >= 0)
-            Player.statLife = TrackedLife;
-
-        // Run the AI brain
-        var brain = info.Brain;
-        if (brain != null)
-        {
-            brain.CompanionPlayer = Player;
-            brain.OwnerPlayer = owner;
-
-            brain.Think();
-            brain.ApplyInputs();
-
-            // Tick combat cooldowns every frame so they don't freeze between fights
-            _combatHandler ??= new CompanionCombatHandler();
-            _combatHandler.Update();
-
-            // Handle combat directly since Player.ItemCheck() only runs for Main.myPlayer
-            if (brain.Inputs.UseItem && brain.Inputs.AimWorldPosition != Vector2.Zero)
-            {
-                // Override mouse/screen so weapon swing animations aim at the target
-                AimSimulator.BeginAimOverride(Player, brain.Inputs.AimWorldPosition);
-                _combatHandler.TryAttack(Player, brain.Inputs.AimWorldPosition);
-            }
-        }
-
-        // Handle teleport if too far from owner
-        if (owner != null && owner.active)
-        {
-            var config = ModContent.GetInstance<CompanionConfig>();
-            float teleportDist = config?.TeleportDistance ?? 800f;
-            if (Vector2.Distance(Player.Center, owner.Center) > teleportDist)
-            {
-                Player.Teleport(owner.Center + new Vector2(owner.direction == 1 ? -60 : 60, 0));
-                Player.velocity = Vector2.Zero;
-            }
-        }
     }
-
-    public override void PostUpdate()
-    {
-        if (!IsCompanionPlayer)
-            return;
-
-        // Restore mouse/screen globals after the companion's update processed
-        AimSimulator.EndAimOverride();
-
-        // Restore tracked health again in case vanilla's Update() overwrote it
-        if (TrackedLife >= 0)
-            Player.statLife = TrackedLife;
-        if (TrackedMana >= 0)
-            Player.statMana = TrackedMana;
-
-        // Manually check NPC contact damage and hostile projectile hits,
-        // since vanilla only runs these checks for Main.myPlayer
-        CompanionDamageReceiver.CheckDamage(Player);
-
-        // Save current health/mana as the authoritative tracked values
-        TrackedLife = Player.statLife;
-        TrackedMana = Player.statMana;
-
-        // Prevent the companion from opening UI elements
-        Player.chest = -1;
-        Player.sign = -1;
-    }
-
-    public override void Kill(double damage, int hitDirection, bool pvp, PlayerDeathReason damageSource)
-    {
-        if (!IsCompanionPlayer)
-            return;
-
-        var info = SlotInfo;
-        if (info == null)
-            return;
-
-        // Notify the owner's CompanionPlayer about companion death
-        var owner = Main.player[info.OwnerPlayerIndex];
-        if (owner != null && owner.active)
-        {
-            var cp = owner.GetModPlayer<CompanionPlayer>();
-            cp.OnCompanionDied();
-        }
-
-        // Prevent vanilla death screen/respawn logic for companion players
-        Player.respawnTimer = 0;
-    }
-
-    public override bool PreKill(double damage, int hitDirection, bool pvp, ref bool playSound, ref bool genDust,
-        ref PlayerDeathReason damageSource)
-    {
-        if (!IsCompanionPlayer)
-            return true;
-
-        // Let the kill happen but suppress visual effects for now
-        playSound = false;
-        genDust = false;
-        return true;
-    }
-
-    /// <summary>
-    /// Called by CompanionDamageReceiver when the companion's HP reaches 0.
-    /// Notifies the owner so the companion slot is released and respawn timer starts.
-    /// </summary>
-    public void OnCompanionKilled()
-    {
-        if (!IsCompanionPlayer)
-            return;
-
-        TrackedLife = 0;
-
-        var info = SlotInfo;
-        if (info == null)
-            return;
-
-        var owner = Main.player[info.OwnerPlayerIndex];
-        if (owner != null && owner.active)
-        {
-            var cp = owner.GetModPlayer<CompanionPlayer>();
-            cp.OnCompanionDied();
-        }
-    }
-
-    // Suppress vanilla save/load — companion data is persisted through the owner's CompanionPlayer
-    public override void SaveData(TagCompound tag) { }
-    public override void LoadData(TagCompound tag) { }
 }

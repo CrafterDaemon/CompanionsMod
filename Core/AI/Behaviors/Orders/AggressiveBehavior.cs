@@ -1,3 +1,4 @@
+using CompanionsMod.Core.AI;
 using CompanionsMod.Core.AI.Brain;
 using CompanionsMod.Core.AI.Behaviors.Combat;
 using CompanionsMod.Core.AI.Behaviors.Movement;
@@ -5,12 +6,16 @@ using CompanionsMod.Core.AI.Behaviors.Movement;
 namespace CompanionsMod.Core.AI.Behaviors.Orders;
 
 /// <summary>
-/// Companion aggressively seeks out and attacks enemies. Will chase targets further
-/// and prioritize higher-threat enemies. Falls back to following if no enemies.
+/// Companion aggressively seeks out and attacks enemies. Uses a wider detection
+/// range (1600 tiles vs 800 default), prioritizes highest-damage threats, and
+/// always pursues targets. Falls back to following if no enemies.
 /// </summary>
 public class AggressiveBehavior : IBehavior
 {
-    private readonly EngageEnemyBehavior _combat = new();
+    private readonly EngageEnemyBehavior _combat = new(
+        detectionRange: 1600f,
+        priority: TargetPriority.HighestDamage,
+        pursueTargets: true);
     private readonly FollowOwnerBehavior _follow = new();
 
     public BehaviorStatus Tick(CompanionBrain brain, ref CompanionInputState inputs)

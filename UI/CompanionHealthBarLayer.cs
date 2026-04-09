@@ -80,7 +80,7 @@ public static class CompanionHealthBarLayer
         // Read health from the controller's tracked value, not Player.statLife,
         // because vanilla resets statLife on non-local player slots between updates and draw.
         var controller = companion.GetModPlayer<CompanionPlayerController>();
-        int trackedLife = controller?.TrackedLife ?? companion.statLife;
+        int trackedLife = companion.statLife;
         int displayLife = isDead ? 0 : System.Math.Max(trackedLife, 0);
         int displayLifeMax = companion.statLifeMax2 > 0 ? companion.statLifeMax2 : companion.statLifeMax;
         float healthPercent = isDead ? 0f : (float)displayLife / displayLifeMax;

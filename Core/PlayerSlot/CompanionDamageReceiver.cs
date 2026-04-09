@@ -1,3 +1,5 @@
+using CompanionsMod.Core;
+using CompanionsMod.Core.PlayerSlot;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.Audio;
@@ -17,6 +19,13 @@ public static class CompanionDamageReceiver
     public static void CheckDamage(Player companion)
     {
         if (companion == null || !companion.active || companion.dead)
+            return;
+
+        // Only the server tracks authoritative damage. Clients receive health
+        // updates through sync packets rather than independently computing hits.
+        // Without this gate, each client would apply damage separately, causing
+        // the companion to die far faster than intended and iframe mismatches.
+        if (Main.netMode == NetmodeID.MultiplayerClient)
             return;
 
         // Tick down invincibility frames manually
@@ -154,12 +163,18 @@ public static class CompanionDamageReceiver
             companion.dead = true;
             companion.active = false;
 
-            // Death sound + dust
             SoundEngine.PlaySound(SoundID.PlayerKilled, companion.Center);
 
-            // Notify the owner via the Kill path in CompanionPlayerController
-            var controller = companion.GetModPlayer<CompanionPlayerController>();
-            controller?.OnCompanionKilled();
+            // Notify the owner directly. This is the single authoritative death path
+            // for damage-receiver kills. Kill() on CompanionPlayerController handles
+            // deaths that come through vanilla's KillMe() instead.
+            var slotInfo = CompanionSlotManager.GetSlotInfo(companion.whoAmI);
+            if (slotInfo != null)
+            {
+                var owner = Main.player[slotInfo.OwnerPlayerIndex];
+                if (owner != null && owner.active)
+                    owner.GetModPlayer<CompanionPlayer>().OnCompanionDied();
+            }
         }
     }
 }
